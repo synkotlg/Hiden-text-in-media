@@ -20,11 +20,11 @@ original usability.
 - Auto-install required Python modules
 
 Option	                Description
--k	                    Encryption key
--t	                    Expiration time in seconds
--r	                    Maximum read count
---destroy-on-fail	      Remove message if wrong key
---corrupt-after-read	  Corrupt media after read
+- -k	                    Encryption key
+- -t	                    Expiration time in seconds
+- -r	                    Maximum read count
+- --destroy-on-fail	      Remove message if wrong key
+- --corrupt-after-read	  Corrupt media after read
 
 Security Model
 
