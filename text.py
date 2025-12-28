@@ -43,7 +43,7 @@ def fragment(data, n):
     size = len(data) // n
     return [data[i*size:(i+1)*size] for i in range(n-1)] + [data[(n-1)*size:]]
 
-def add_text(text, file, pwd=None, ttl=None, max_reads=None,destroy_on_fail=False, corrupt_after_read=False):
+def add_text(text,file,pwd=None,ttl=None,max_reads=None,destroy_on_fail=False,corrupt_after_read=False):
     text = text.replace("\\n", "\n")
     if not pwd:
         pwd = gen_key()
@@ -54,25 +54,27 @@ def add_text(text, file, pwd=None, ttl=None, max_reads=None,destroy_on_fail=Fals
         "reads": 0,
         "destroy_on_fail": destroy_on_fail,
         "corrupt_after_read": corrupt_after_read}
-    
     payload = json.dumps({"meta": meta, "text": text}).encode()
     chunks = fragment(payload, secrets.randbelow(4) + 3)
-    key = derive_key(pwd)
-    aes = AESGCM(key)
+    aes = AESGCM(derive_key(pwd))
     out = b""
     for c in chunks:
+        pad_len = secrets.randbelow(128)
+        pad = secrets.token_bytes(pad_len)
         nonce = secrets.token_bytes(12)
-        enc = nonce + aes.encrypt(nonce, c, None)
-        pad = secrets.token_bytes(secrets.randbelow(128))
-        block = pad + enc
+        enc = aes.encrypt(nonce, c, None)
+        block = struct.pack(">B", pad_len) + pad + nonce + enc
         out += block + struct.pack(">I", len(block))
-    with open(file, "ab") as f: f.write(out)
+    footer = b"HTX1" + struct.pack(">I", len(out))
+    with open(file, "ab") as f:
+        f.write(out + footer)
     print("[+] Message caché")
+    try: input("Appuie sur Entrée pour quitter...")
+    except: pass
 
 def remove_block(file):
     with open(file, "rb") as f:
         data = f.read()
-
     pos = len(data)
     while pos > 4:
         size = struct.unpack(">I", data[pos-4:pos])[0]
@@ -83,36 +85,48 @@ def remove_block(file):
 
 def read_text(file, pwd):
     anti_debug()
-    with open(file, "rb") as f: data = f.read()
-    pos = len(data)
+    with open(file, "rb") as f:
+        f.seek(-8, os.SEEK_END)
+        if f.read(4) != b"HTX1":
+            print("[-] Aucun message trouvé")
+            try: input("Appuie sur Entrée pour quitter...")
+            except: pass
+            return
+        size = struct.unpack(">I", f.read(4))[0]
+        f.seek(-(8 + size), os.SEEK_END)
+        data = f.read(size)
     parts = []
-    while pos > 4:
-        size = struct.unpack(">I", data[pos-4:pos])[0]
-        start = pos - 4 - size
-        block = data[start:pos-4]
-        pos = start
-        for i in range(len(block)):
-            try:
-                raw = block[i:]
-                nonce = raw[:12]
-                enc = raw[12:]
-                aes = AESGCM(derive_key(pwd))
-                parts.append(aes.decrypt(nonce, enc, None))
-                break
-            except: continue
+    pos = len(data)
+    aes = AESGCM(derive_key(pwd))
+    while pos > 0:
+        block_size = struct.unpack(">I", data[pos-4:pos])[0]
+        block = data[pos-4-block_size:pos-4]
+        pos -= 4 + block_size
+        try:
+            pad_len = block[0]
+            nonce = block[1 + pad_len : 13 + pad_len]
+            enc = block[13 + pad_len :]
+            parts.append(aes.decrypt(nonce, enc, None))
+        except: continue
     if not parts:
         print("[-] Mauvaise clé")
+        try: input("Appuie sur Entrée pour quitter...")
+        except: pass
         return
     payload = json.loads(b"".join(reversed(parts)))
     meta = payload["meta"]
     if meta["expire"] and now() > meta["expire"]:
-        print("[-] Message expiré")
+        print("[-] Message expiré → supprimé")
         remove_block(file)
+        try: input("Appuie sur Entrée pour quitter...")
+        except: pass
         return
     meta["reads"] += 1
     if meta["max_reads"] and meta["reads"] > meta["max_reads"]:
-        print("[-] Limite atteinte")
+        print("[-] Limite de lecture atteinte → supprimé")
         remove_block(file)
+        try: input("Appuie sur Entrée pour quitter...")
+        except: pass
         return
     print("\n===== MESSAGE =====")
     print(payload["text"])
@@ -122,6 +136,8 @@ def read_text(file, pwd):
             f.seek(0)
             f.write(secrets.token_bytes(1024))
         print("[!] Média corrompu")
+        try: input("Appuie sur Entrée pour quitter...")
+        except: pass
 
 def help():
     print("""
