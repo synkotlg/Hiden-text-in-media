@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+#& by @synko & hashref sec
+
 import os, sys, time, json, secrets, struct, subprocess, argparse
 
 def ensure(pkg):
