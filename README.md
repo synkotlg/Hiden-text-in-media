@@ -59,4 +59,4 @@ the script will automatically install missing modules.
 ### Add hidden text
 - python text.py -text add "Hello\nWorld" to video.mp4
 - python text.py -text read video.mp4 -k mypassword/key
-
+- python text.py -text check image.jpg
